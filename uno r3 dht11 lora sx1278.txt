@@ -1,0 +1,88 @@
+#include <SoftwareSerial.h>
+#include <DHT.h>
+
+#define DHTPIN 2      // Chân dữ liệu của DHT11 kết nối với GPIO 2
+#define DHTTYPE DHT11 // Định nghĩa loại cảm biến DHT
+
+SoftwareSerial mySerial(6, 7); // TX, RX cho module LoRa 6 vào TX 7 vào RX của LoRa
+
+#define M0 8
+#define M1 9
+
+DHT dht(DHTPIN, DHTTYPE); // Khởi tạo cảm biến DHT
+
+// Biến để lưu trữ giá trị trước đó
+float lastHumidity = -1;  // Giá trị độ ẩm trước đó
+float lastTemperature = -1; // Giá trị nhiệt độ trước đó
+
+void setup() {
+  Serial.begin(9600);
+  mySerial.begin(9600);
+  
+  pinMode(M0, OUTPUT);        
+  pinMode(M1, OUTPUT);
+  digitalWrite(M0, LOW); // Đặt M0 và M1 xuống LOW để chế độ Normal
+  digitalWrite(M1, LOW);
+  
+  dht.begin(); // Khởi động cảm biến DHT
+}
+
+// Hàm đọc và xử lý dữ liệu từ cảm biến DHT11
+void readAndSendDHT11Data() {
+  // Đọc dữ liệu từ cảm biến DHT11
+  float humidity = dht.readHumidity();
+  float temperature = dht.readTemperature();
+
+  // Kiểm tra nếu việc đọc thất bại
+  if (isnan(humidity) || isnan(temperature)) {
+    Serial.println("Đọc dữ liệu từ cảm biến DHT thất bại!");
+    return;
+  }
+
+  // Tạo chuỗi dữ liệu theo định dạng "Temp: <temperature>, Hum: <humidity>"
+  String sensorData = "Temp: " + String(temperature) + ", Hum: " + String(humidity);
+
+  // Tách nhiệt độ và độ ẩm từ chuỗi dữ liệu
+  int tempIndex = sensorData.indexOf("Temp:") + 6; // Vị trí bắt đầu của giá trị nhiệt độ
+  int humIndex = sensorData.indexOf(", Hum:"); // Vị trí của dấu phẩy trước độ ẩm
+
+  // Kiểm tra chỉ số hợp lệ
+  if (tempIndex > 5 && humIndex > tempIndex) {
+    float currentTemperature = sensorData.substring(tempIndex, humIndex).toFloat();
+    float currentHumidity = sensorData.substring(humIndex + 6).toFloat();
+
+    // Gửi dữ liệu chỉ khi có sự thay đổi
+    if (currentTemperature != lastTemperature || currentHumidity != lastHumidity) {
+      sendData(sensorData); // Gửi dữ liệu qua LoRa
+
+      // Cập nhật giá trị trước đó
+      lastTemperature = currentTemperature;
+      lastHumidity = currentHumidity;
+    }
+  }
+}
+
+// Hàm gửi dữ liệu qua LoRa
+void sendData(String data) {
+  mySerial.println(data);
+  Serial.println("Đã gửi: " + data); // In dữ liệu đã gửi lên Serial monitor
+}
+
+// Hàm nhận dữ liệu từ LoRa
+void receiveData() {
+  if (mySerial.available() > 0) {
+    String receivedData = mySerial.readString();
+    receivedData.trim();
+    Serial.println(receivedData); // In dữ liệu đã nhận lên Serial monitor
+  }
+}
+
+void loop() {
+  // Gọi hàm đọc và gửi dữ liệu từ cảm biến DHT11
+  readAndSendDHT11Data();
+  
+  // Kiểm tra xem có dữ liệu nhận được từ LoRa không
+  receiveData();
+  
+  delay(2000); // Chờ 2 giây trước khi thực hiện vòng lặp tiếp theo
+}
